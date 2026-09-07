@@ -1,8 +1,12 @@
+import sys
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Response
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response
 from fastapi.responses import FileResponse
 from email_service import send_email
+
+# Flush log output immediately to Render console
+sys.stdout.reconfigure(line_buffering=True)
 
 app = FastAPI(title="Mail Dispatch Studio")
 
@@ -18,7 +22,7 @@ async def favicon():
 
 @app.get("/health", tags=["Monitoring"])
 async def health_check():
-    """Ping endpoint for UptimeRobot to prevent Render 15-minute sleep."""
+    """Ping endpoint for uptime monitoring."""
     return {"status": "ok", "service": "Mail Dispatch Studio"}
 
 
@@ -36,13 +40,12 @@ async def home():
 
 @app.post("/send-mail")
 async def send_mail_endpoint(
-    background_tasks: BackgroundTasks,
     to: str = Form(...),
     subject: str = Form(...),
     message: str = Form(...),
     file: Optional[UploadFile] = File(None)
 ):
-    """Processes comma-separated recipients and offloads dispatch to background tasks."""
+    """Processes recipients and waits for delivery so real errors are surfaced."""
     recipient_list = [email.strip() for email in to.split(",") if email.strip()]
 
     if not recipient_list:
@@ -58,9 +61,8 @@ async def send_mail_endpoint(
         filename = file.filename
         file_data = await file.read()
 
-    # Offload SMTP transfer so the UI returns immediately
-    background_tasks.add_task(
-        send_email,
+    # Execute directly so failed dispatches return an error to the UI
+    success = send_email(
         to_emails=recipient_list,
         subject=subject,
         body=message,
@@ -68,8 +70,14 @@ async def send_mail_endpoint(
         file_data=file_data
     )
 
+    if not success:
+        raise HTTPException(
+            status_code=500,
+            detail="Mail delivery failed. Check your Render server logs for the exact rejection reason."
+        )
+
     return {
-        "message": f"Email dispatched to {len(recipient_list)} recipient(s)!",
+        "message": f"Email delivered successfully to {len(recipient_list)} recipient(s)!",
         "recipients": recipient_list,
         "subject": subject,
         "filename": filename
