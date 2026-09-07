@@ -1,0 +1,390 @@
+FASTAPI GMAIL MAIL API
+======================
+
+HOW TO RUN THE PROJECT
+----------------------
+
+This file contains the commands needed to start the FastAPI Mail API
+and an explanation of what each command does.
+
+
+1. OPEN THE PROJECT FOLDER
+--------------------------
+
+Command:
+
+cd "D:\project\email api\mail-api"
+
+Explanation:
+
+This command moves your PowerShell terminal into your Mail API project
+folder.
+
+You must run the remaining commands from this folder.
+
+
+2. ACTIVATE THE VIRTUAL ENVIRONMENT
+-----------------------------------
+
+Command:
+
+.\venv\Scripts\activate
+
+Explanation:
+
+This activates the Python virtual environment named "venv".
+
+The virtual environment contains the Python packages required by your
+project, such as:
+
+- FastAPI
+- Uvicorn
+- python-multipart
+- python-dotenv
+- Other project dependencies
+
+After activation, your terminal should look similar to:
+
+(venv) PS D:\project\email api\mail-api>
+
+
+3. START THE FASTAPI SERVER
+---------------------------
+
+Command:
+
+python -m uvicorn main:app --reload
+
+Explanation:
+
+python
+    Uses Python from your activated virtual environment.
+
+-m uvicorn
+    Runs Uvicorn, the ASGI server used to run your FastAPI application.
+
+main:app
+    main = your Python file named main.py
+    app  = the FastAPI application object inside main.py
+
+--reload
+    Automatically restarts the server whenever you make changes
+    to your Python code.
+
+When the server starts successfully, you should see something similar
+to:
+
+INFO: Uvicorn running on http://127.0.0.1:8000
+INFO: Application startup complete.
+
+
+4. OPEN THE API DOCUMENTATION
+------------------------------
+
+Open this address in your browser:
+
+http://127.0.0.1:8000/docs
+
+Explanation:
+
+This opens FastAPI's Swagger UI.
+
+Swagger allows you to test your API without building a frontend.
+
+For your project, you can test:
+
+POST /send-mail
+
+This endpoint sends an email with an attachment.
+
+
+5. TEST THE SEND-MAIL ENDPOINT
+------------------------------
+
+In Swagger:
+
+1. Open POST /send-mail
+2. Click "Try it out"
+3. Enter the recipient email in "to"
+4. Enter the email subject in "subject"
+5. Enter your message in "message"
+6. Select a file using "file"
+7. Click "Execute"
+
+If everything is configured correctly, the API should return something
+similar to:
+
+{
+  "message": "Email sent successfully!",
+  "to": "recipient@example.com",
+  "subject": "trial",
+  "filename": "example.jpg"
+}
+
+
+6. STOP THE SERVER
+------------------
+
+Command:
+
+CTRL + C
+
+Explanation:
+
+Press Ctrl + C in the terminal to stop the running Uvicorn server.
+
+
+QUICK START
+-----------
+
+Every time you want to run the project, use these three commands:
+
+cd "D:\project\email api\mail-api"
+
+.\venv\Scripts\activate
+
+python -m uvicorn main:app --reload
+
+Then open:
+
+http://127.0.0.1:8000/docs
+
+
+ALTERNATIVE: RUN WITHOUT ACTIVATING VENV
+----------------------------------------
+
+You can also run the project directly using the Python executable
+inside your virtual environment.
+
+Commands:
+
+cd "D:\project\email api\mail-api"
+
+.\venv\Scripts\python.exe -m uvicorn main:app --reload
+
+Explanation:
+
+This method directly uses the Python installation inside "venv".
+
+You do NOT need to run:
+
+.\venv\Scripts\activate
+
+when using this method.
+
+
+IMPORTANT: GMAIL CONFIGURATION
+------------------------------
+
+Your project uses Gmail SMTP.
+
+You need a .env file in your project folder.
+
+Example:
+
+GMAIL_EMAIL=your-gmail-address
+GMAIL_APP_PASSWORD=your-gmail-app-password
+
+IMPORTANT:
+
+Do NOT share your Gmail App Password.
+
+Do NOT upload your .env file to GitHub.
+
+Add .env to your .gitignore file.
+
+
+CURRENT PROJECT FLOW
+--------------------
+
+Swagger / Frontend
+        |
+        v
+POST /send-mail
+        |
+        v
+FastAPI (main.py)
+        |
+        | Receives:
+        | - to
+        | - subject
+        | - message
+        | - file
+        |
+        v
+email_service.py
+        |
+        v
+Gmail SMTP
+        |
+        v
+Recipient
+        |
+        v
+Email + Attachment
+
+
+IMPORTANT PACKAGES
+------------------
+
+Your project requires packages such as:
+
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+
+
+INSTALL MISSING PACKAGES
+------------------------
+
+If python-multipart is missing, run:
+
+.\venv\Scripts\python.exe -m pip install python-multipart
+
+
+If you have a requirements.txt file, you can install all dependencies
+using:
+
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+
+
+TROUBLESHOOTING
+---------------
+
+ERROR:
+
+Form data requires "python-multipart" to be installed.
+
+FIX:
+
+.\venv\Scripts\python.exe -m pip install python-multipart
+
+
+ERROR:
+
+'uvicorn' is not recognized
+
+FIX:
+
+python -m uvicorn main:app --reload
+
+OR:
+
+.\venv\Scripts\python.exe -m uvicorn main:app --reload
+
+
+ERROR:
+
+The API is not opening.
+
+CHECK:
+
+Make sure the terminal shows:
+
+Uvicorn running on http://127.0.0.1:8000
+
+Then open:
+
+http://127.0.0.1:8000/docs
+
+
+ERROR:
+
+Email is not being sent.
+
+CHECK:
+
+1. GMAIL_EMAIL is correct.
+2. GMAIL_APP_PASSWORD is correct.
+3. Your .env file exists.
+4. Gmail App Password is being used instead of your normal Gmail password.
+5. The terminal does not show an SMTP authentication error.
+
+
+CURRENT PROJECT STATUS
+----------------------
+
+The following features have been successfully tested:
+
+[✓] FastAPI server
+[✓] Uvicorn
+[✓] File upload
+[✓] python-multipart
+[✓] Gmail SMTP
+[✓] Gmail authentication
+[✓] HTML email
+[✓] Plain-text email
+[✓] JPG attachment
+[✓] Email successfully sent
+[✓] Attachment successfully sent
+
+
+CURRENT API
+-----------
+
+Endpoint:
+
+POST /send-mail
+
+Parameters:
+
+to
+    Recipient email address.
+
+subject
+    Email subject.
+
+message
+    Email body.
+
+file
+    Attachment to send with the email.
+
+
+EXAMPLE
+-------
+
+to:
+
+kamalraj5566688@gmail.com
+
+subject:
+
+trial
+
+message:
+
+Testing my FastAPI Gmail Mail API
+
+file:
+
+example.jpg
+
+
+SUCCESS RESPONSE
+----------------
+
+{
+  "message": "Email sent successfully!",
+  "to": "kamalraj5566688@gmail.com",
+  "subject": "trial",
+  "filename": "example.jpg"
+}
+
+
+DAILY RUN COMMAND
+-----------------
+
+If the project is already configured, the easiest way to start it is:
+
+cd "D:\project\email api\mail-api"
+.\venv\Scripts\activate
+python -m uvicorn main:app --reload
+
+Then visit:
+
+http://127.0.0.1:8000/docs
+
+
+END OF DOCUMENT
