@@ -11,12 +11,12 @@ import openpyxl
 load_dotenv()
 
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
-SENDER_EMAIL = os.getenv("SENDER_EMAIL", "kamalraj5566688@gmail.com")
+SENDER_EMAIL = os.getenv("SENDER_EMAIL", "gamerkamal028@gmail.com")
 BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 
 def build_html_wrapper(subject: str, body: str) -> str:
-    """Wraps body text in a clean Apple-style email layout."""
+    """Wraps body text in an Apple-inspired email template."""
     return f"""<!DOCTYPE html>
 <html>
     <body style="margin: 0; padding: 40px 20px; background-color: #f5f5f7; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; color: #1d1d1f;">
@@ -35,42 +35,74 @@ def build_html_wrapper(subject: str, body: str) -> str:
 
 def parse_recipients_file(filename: str, content: bytes) -> List[Dict[str, str]]:
     """
-    Parses .csv or .xlsx spreadsheets into a list of row dicts.
-    Identifies the email column automatically.
+    Parses .csv or .xlsx spreadsheets into normalized row dictionaries.
+    Resolves unquoted carriage returns and detects delimiters automatically.
     """
     records: List[Dict[str, str]] = []
     ext = filename.lower().split(".")[-1]
 
+    # Guard: Detect if an Excel (.xlsx) file was renamed or uploaded with a .csv extension
+    if content.startswith(b"PK\x03\x04"):
+        ext = "xlsx"
+
     if ext == "csv":
-        text_stream = io.StringIO(content.decode("utf-8-sig", errors="ignore"))
-        reader = csv.DictReader(text_stream)
+        # Decode and normalize Windows/HTTP multipart carriage returns (\r\r\n, \r\n, \r) to \n
+        raw_text = content.decode("utf-8-sig", errors="ignore")
+        normalized_text = (
+            raw_text.replace("\r\r\n", "\n")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+        )
+
+        # Detect delimiter (comma, semicolon, or tab)
+        sample = normalized_text[:2048]
+        delimiter = ","
+        if sample.count(";") > sample.count(",") and sample.count(";") > sample.count("\t"):
+            delimiter = ";"
+        elif sample.count("\t") > sample.count(","):
+            delimiter = "\t"
+
+        text_stream = io.StringIO(normalized_text, newline="")
+        reader = csv.DictReader(text_stream, delimiter=delimiter)
+
         for row in reader:
-            clean_row = {str(k).strip(): str(v).strip() for k, v in row.items() if k is not None}
-            records.append(clean_row)
+            if not row:
+                continue
+            clean_row = {
+                str(k).strip(): str(v).strip()
+                for k, v in row.items()
+                if k is not None and v is not None
+            }
+            if clean_row:
+                records.append(clean_row)
 
     elif ext in ["xlsx", "xls"]:
         wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
         sheet = wb.active
         rows = list(sheet.iter_rows(values_only=True))
         if rows:
-            headers = [str(h).strip() if h is not None else f"col_{idx}" for idx, h in enumerate(rows[0])]
+            headers = [
+                str(h).strip() if h is not None else f"col_{idx}"
+                for idx, h in enumerate(rows[0])
+            ]
             for data_row in rows[1:]:
                 row_dict = {}
                 for idx, cell in enumerate(data_row):
                     if idx < len(headers):
                         row_dict[headers[idx]] = str(cell).strip() if cell is not None else ""
-                records.append(row_dict)
+                if any(row_dict.values()):
+                    records.append(row_dict)
 
-    # Locate email field for each row
+    # Locate email field across common header aliases
     valid_records = []
     for rec in records:
         email_key = None
         for k in rec.keys():
-            if k.lower() in ["email", "e-mail", "mail", "recipient", "to"]:
+            if k.lower() in ["email", "e-mail", "mail", "recipient", "to", "email address", "email_id"]:
                 email_key = k
                 break
-        
-        # Fallback: find any value containing an '@'
+
+        # Fallback: inspect field values for an '@' address
         if not email_key:
             for k, val in rec.items():
                 if "@" in val and "." in val:
@@ -78,7 +110,7 @@ def parse_recipients_file(filename: str, content: bytes) -> List[Dict[str, str]]
                     break
 
         if email_key and rec.get(email_key):
-            rec["__email__"] = rec[email_key]
+            rec["__email__"] = rec[email_key].strip()
             valid_records.append(rec)
 
     return valid_records
@@ -106,7 +138,7 @@ def send_brevo_request(
 ) -> Tuple[bool, str]:
     """Transmits an email payload to Brevo's v3 REST endpoint."""
     if not BREVO_API_KEY:
-        return False, "BREVO_API_KEY is not configured."
+        return False, "BREVO_API_KEY is not configured in environment variables."
 
     payload: Dict[str, Any] = {
         "sender": {"name": "Mail Dispatch Studio", "email": SENDER_EMAIL},
@@ -154,7 +186,7 @@ def send_bulk_personalized(
     attachment_name: Optional[str] = None,
     attachment_data: Optional[bytes] = None
 ) -> Dict[str, Any]:
-    """Sends personalized, individualized copies to each recipient from a spreadsheet."""
+    """Sends personalized copies to each recipient parsed from a spreadsheet."""
     sent_count = 0
     failures = []
 
