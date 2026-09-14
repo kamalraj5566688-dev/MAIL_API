@@ -1,82 +1,190 @@
 import os
-import smtplib
-from email.message import EmailMessage
-from typing import List, Union
+import io
+import csv
+import re
+import base64
+import requests
+from typing import List, Dict, Any, Optional, Tuple
 from dotenv import load_dotenv
+import openpyxl
 
 load_dotenv()
 
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+SENDER_EMAIL = os.getenv("SENDER_EMAIL", "kamalraj5566688@gmail.com")
+BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
-def send_email(
-    to_emails: Union[str, List[str]], 
-    subject: str, 
-    body: str, 
-    filename: str = None, 
-    file_data: bytes = None
-) -> bool:
-    sender_email = os.getenv("GMAIL_EMAIL")
-    app_password = os.getenv("GMAIL_APP_PASSWORD")
 
-    if not sender_email or not app_password:
-        raise ValueError("Missing GMAIL_EMAIL or GMAIL_APP_PASSWORD in environment.")
-
-    # Normalize comma-separated string or list to clean recipient array
-    if isinstance(to_emails, str):
-        recipients = [email.strip() for email in to_emails.split(",") if email.strip()]
-    else:
-        recipients = [email.strip() for email in to_emails if email.strip()]
-
-    if not recipients:
-        raise ValueError("No valid recipient addresses provided.")
-
-    html_content = f"""<!DOCTYPE html>
+def build_html_wrapper(subject: str, body: str) -> str:
+    """Wraps body text in a clean Apple-style email layout."""
+    return f"""<!DOCTYPE html>
 <html>
-    <body style="margin: 0; padding: 40px 20px; background-color: #f5f5f7; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; color: #1d1d1f; letter-spacing: -0.374px;">
+    <body style="margin: 0; padding: 40px 20px; background-color: #f5f5f7; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; color: #1d1d1f;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 18px; border: 1px solid rgba(0, 0, 0, 0.08); padding: 40px; box-sizing: border-box;">
             <div style="font-size: 12px; font-weight: 600; color: #7a7a7a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px;">Mail Dispatch</div>
-            <h1 style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; font-size: 28px; font-weight: 600; line-height: 1.15; margin: 0 0 20px 0; color: #1d1d1f; letter-spacing: -0.374px;">{subject}</h1>
-            <div style="font-size: 17px; line-height: 1.47; color: #1d1d1f; white-space: pre-wrap;">{body}</div>
+            <h1 style="font-size: 24px; font-weight: 600; line-height: 1.25; margin: 0 0 20px 0; color: #1d1d1f;">{subject}</h1>
+            <div style="font-size: 16px; line-height: 1.55; color: #1d1d1f; white-space: pre-wrap;">{body}</div>
             <hr style="border: none; border-top: 1px solid #f0f0f0; margin: 32px 0 20px 0;">
-            <p style="font-size: 12px; color: #7a7a7a; line-height: 1.2; margin: 0;">
-                Dispatched securely via FastAPI &bull; Designed with Apple Aesthetics
+            <p style="font-size: 12px; color: #86868b; margin: 0;">
+                Dispatched securely via Mail Dispatch Studio &bull; Designed with Apple Aesthetics
             </p>
         </div>
     </body>
-</html>
-"""
+</html>"""
 
-    # Connect to SMTP once and send personalized individual copies
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(sender_email, app_password)
 
-        for recipient in recipients:
-            message = EmailMessage()
-            message["From"] = sender_email
-            message["To"] = recipient
-            message["Subject"] = subject
-            message.set_content(body)
-            message.add_alternative(html_content, subtype="html")
+def parse_recipients_file(filename: str, content: bytes) -> List[Dict[str, str]]:
+    """
+    Parses .csv or .xlsx spreadsheets into a list of row dicts.
+    Identifies the email column automatically.
+    """
+    records: List[Dict[str, str]] = []
+    ext = filename.lower().split(".")[-1]
 
-            if filename and file_data:
-                extension = filename.lower().split(".")[-1]
-                mime_types = {
-                    "jpg": ("image", "jpeg"),
-                    "jpeg": ("image", "jpeg"),
-                    "png": ("image", "png"),
-                    "gif": ("image", "gif"),
-                    "pdf": ("application", "pdf"),
-                    "txt": ("text", "plain"),
-                    "zip": ("application", "zip"),
-                }
-                maintype, subtype = mime_types.get(extension, ("application", "octet-stream"))
-                message.add_attachment(
-                    file_data,
-                    maintype=maintype,
-                    subtype=subtype,
-                    filename=filename
-                )
+    if ext == "csv":
+        text_stream = io.StringIO(content.decode("utf-8-sig", errors="ignore"))
+        reader = csv.DictReader(text_stream)
+        for row in reader:
+            clean_row = {str(k).strip(): str(v).strip() for k, v in row.items() if k is not None}
+            records.append(clean_row)
 
-            server.send_message(message)
+    elif ext in ["xlsx", "xls"]:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+        sheet = wb.active
+        rows = list(sheet.iter_rows(values_only=True))
+        if rows:
+            headers = [str(h).strip() if h is not None else f"col_{idx}" for idx, h in enumerate(rows[0])]
+            for data_row in rows[1:]:
+                row_dict = {}
+                for idx, cell in enumerate(data_row):
+                    if idx < len(headers):
+                        row_dict[headers[idx]] = str(cell).strip() if cell is not None else ""
+                records.append(row_dict)
 
-    return True
+    # Locate email field for each row
+    valid_records = []
+    for rec in records:
+        email_key = None
+        for k in rec.keys():
+            if k.lower() in ["email", "e-mail", "mail", "recipient", "to"]:
+                email_key = k
+                break
+        
+        # Fallback: find any value containing an '@'
+        if not email_key:
+            for k, val in rec.items():
+                if "@" in val and "." in val:
+                    email_key = k
+                    break
+
+        if email_key and rec.get(email_key):
+            rec["__email__"] = rec[email_key]
+            valid_records.append(rec)
+
+    return valid_records
+
+
+def substitute_placeholders(template: str, context: Dict[str, str]) -> str:
+    """Replaces placeholders like {name} or {Company} case-insensitively."""
+    lookup = {k.lower().strip(): v for k, v in context.items() if not k.startswith("__")}
+
+    def replacer(match: re.Match) -> str:
+        key = match.group(1).lower().strip()
+        return lookup.get(key, match.group(0))
+
+    return re.sub(r"\{([a-zA-Z0-9_]+)\}", replacer, template)
+
+
+def send_brevo_request(
+    to_list: List[str],
+    subject: str,
+    body: str,
+    cc_list: Optional[List[str]] = None,
+    bcc_list: Optional[List[str]] = None,
+    attachment_name: Optional[str] = None,
+    attachment_data: Optional[bytes] = None
+) -> Tuple[bool, str]:
+    """Transmits an email payload to Brevo's v3 REST endpoint."""
+    if not BREVO_API_KEY:
+        return False, "BREVO_API_KEY is not configured."
+
+    payload: Dict[str, Any] = {
+        "sender": {"name": "Mail Dispatch Studio", "email": SENDER_EMAIL},
+        "to": [{"email": e} for e in to_list],
+        "subject": subject,
+        "htmlContent": build_html_wrapper(subject, body),
+        "textContent": body
+    }
+
+    if cc_list:
+        payload["cc"] = [{"email": e} for e in cc_list]
+    if bcc_list:
+        payload["bcc"] = [{"email": e} for e in bcc_list]
+
+    if attachment_name and attachment_data:
+        payload["attachment"] = [
+            {
+                "name": attachment_name,
+                "content": base64.b64encode(attachment_data).decode("utf-8")
+            }
+        ]
+
+    headers = {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY.strip(),
+        "content-type": "application/json"
+    }
+
+    try:
+        res = requests.post(BREVO_API_URL, json=payload, headers=headers, timeout=15)
+        if res.status_code in [200, 201, 202]:
+            return True, res.json().get("messageId", "sent")
+        else:
+            return False, f"Brevo API error ({res.status_code}): {res.text}"
+    except Exception as e:
+        return False, str(e)
+
+
+def send_bulk_personalized(
+    records: List[Dict[str, str]],
+    subject_template: str,
+    body_template: str,
+    cc_list: Optional[List[str]] = None,
+    bcc_list: Optional[List[str]] = None,
+    attachment_name: Optional[str] = None,
+    attachment_data: Optional[bytes] = None
+) -> Dict[str, Any]:
+    """Sends personalized, individualized copies to each recipient from a spreadsheet."""
+    sent_count = 0
+    failures = []
+
+    print(f"[BULK START] Processing {len(records)} personalized records...")
+
+    for row in records:
+        target_email = row["__email__"]
+        personalized_subject = substitute_placeholders(subject_template, row)
+        personalized_body = substitute_placeholders(body_template, row)
+
+        ok, msg = send_brevo_request(
+            to_list=[target_email],
+            subject=personalized_subject,
+            body=personalized_body,
+            cc_list=cc_list,
+            bcc_list=bcc_list,
+            attachment_name=attachment_name,
+            attachment_data=attachment_data
+        )
+
+        if ok:
+            sent_count += 1
+            print(f"[BULK SUCCESS] Sent to {target_email}")
+        else:
+            failures.append({"email": target_email, "error": msg})
+            print(f"[BULK FAIL] Failed for {target_email}: {msg}")
+
+    return {
+        "total": len(records),
+        "successful": sent_count,
+        "failed": len(failures),
+        "failure_details": failures
+    }

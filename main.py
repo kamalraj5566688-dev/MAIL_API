@@ -1,8 +1,15 @@
+import sys
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Response
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response
 from fastapi.responses import FileResponse
-from email_service import send_email
+from email_service import (
+    send_brevo_request,
+    parse_recipients_file,
+    send_bulk_personalized
+)
+
+sys.stdout.reconfigure(line_buffering=True)
 
 app = FastAPI(title="Mail Dispatch Studio")
 
@@ -12,59 +19,99 @@ HTML_FILE = BASE_DIR / "index.html"
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
-    """Silences browser favicon requests to avoid 404 logs."""
     return Response(status_code=204)
 
 
-@app.get("/")
-@app.get("/index.html")
+@app.get("/health", tags=["Monitoring"])
+async def health_check():
+    return {"status": "ok", "service": "Mail Dispatch Studio"}
+
+
+@app.get("/", response_class=FileResponse)
+@app.get("/index.html", response_class=FileResponse)
 async def home():
-    """Serves the frontend interface."""
-    if not HTML_FILE.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"index.html was not found in {BASE_DIR}."
-        )
-    return FileResponse(HTML_FILE)
+    if not HTML_FILE.is_file():
+        raise HTTPException(status_code=404, detail="index.html not found.")
+    return FileResponse(HTML_FILE, media_type="text/html")
 
 
 @app.post("/send-mail")
 async def send_mail_endpoint(
-    background_tasks: BackgroundTasks,
-    to: str = Form(...),
+    to: Optional[str] = Form(None),
+    cc: Optional[str] = Form(None),
+    bcc: Optional[str] = Form(None),
     subject: str = Form(...),
     message: str = Form(...),
-    file: Optional[UploadFile] = File(None)
+    file: Optional[UploadFile] = File(None),
+    recipients_file: Optional[UploadFile] = File(None)
 ):
-    """Processes comma-separated recipients and offloads dispatch to background tasks."""
-    recipient_list = [email.strip() for email in to.split(",") if email.strip()]
+    # Parse CC and BCC
+    cc_list = [e.strip() for e in cc.split(",") if e.strip()] if cc else None
+    bcc_list = [e.strip() for e in bcc.split(",") if e.strip()] if bcc else None
 
-    if not recipient_list:
-        raise HTTPException(
-            status_code=400,
-            detail="Please provide at least one valid recipient email."
+    # Read attachment if provided
+    att_name = None
+    att_data = None
+    if file and file.filename:
+        att_name = file.filename
+        att_data = await file.read()
+
+    # MODE A: Bulk Personalization via Spreadsheet (.csv or .xlsx)
+    if recipients_file and recipients_file.filename:
+        file_bytes = await recipients_file.read()
+        records = parse_recipients_file(recipients_file.filename, file_bytes)
+
+        if not records:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid recipient emails were detected in the uploaded file."
+            )
+
+        result = send_bulk_personalized(
+            records=records,
+            subject_template=subject,
+            body_template=message,
+            cc_list=cc_list,
+            bcc_list=bcc_list,
+            attachment_name=att_name,
+            attachment_data=att_data
         )
 
-    filename = None
-    file_data = None
+        return {
+            "mode": "bulk_personalization",
+            "message": f"Successfully delivered {result['successful']} of {result['total']} personalized emails!",
+            "details": result
+        }
 
-    if file and file.filename:
-        filename = file.filename
-        file_data = await file.read()
+    # MODE B: Direct Recipients
+    elif to and to.strip():
+        to_list = [e.strip() for e in to.split(",") if e.strip()]
+        if not to_list:
+            raise HTTPException(status_code=400, detail="Please enter at least one recipient email.")
 
-    # Offload SMTP transfer so the UI returns immediately
-    background_tasks.add_task(
-        send_email,
-        to_emails=recipient_list,
-        subject=subject,
-        body=message,
-        filename=filename,
-        file_data=file_data
-    )
+        ok, msg = send_brevo_request(
+            to_list=to_list,
+            subject=subject,
+            body=message,
+            cc_list=cc_list,
+            bcc_list=bcc_list,
+            attachment_name=att_name,
+            attachment_data=att_data
+        )
 
-    return {
-        "message": f"Email dispatched to {len(recipient_list)} recipient(s)!",
-        "recipients": recipient_list,
-        "subject": subject,
-        "filename": filename
-    }
+        if not ok:
+            raise HTTPException(status_code=500, detail=msg)
+
+        return {
+            "mode": "standard_dispatch",
+            "message": f"Email delivered successfully to {len(to_list)} recipient(s)!",
+            "to": to_list,
+            "cc": cc_list,
+            "bcc": bcc_list
+        }
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Please provide recipient emails in 'To' or upload a CSV/XLSX spreadsheet."
+        )
