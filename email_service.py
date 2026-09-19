@@ -36,17 +36,16 @@ def build_html_wrapper(subject: str, body: str) -> str:
 def parse_recipients_file(filename: str, content: bytes) -> List[Dict[str, str]]:
     """
     Parses .csv or .xlsx spreadsheets into normalized row dictionaries.
-    Resolves unquoted carriage returns and detects delimiters automatically.
+    Normalizes line breaks and detects delimiters automatically.
     """
     records: List[Dict[str, str]] = []
     ext = filename.lower().split(".")[-1]
 
-    # Guard: Detect if an Excel (.xlsx) file was renamed or uploaded with a .csv extension
+    # Guard: Detect if an Excel (.xlsx) file was renamed or uploaded as .csv
     if content.startswith(b"PK\x03\x04"):
         ext = "xlsx"
 
     if ext == "csv":
-        # Decode and normalize Windows/HTTP multipart carriage returns (\r\r\n, \r\n, \r) to \n
         raw_text = content.decode("utf-8-sig", errors="ignore")
         normalized_text = (
             raw_text.replace("\r\r\n", "\n")
@@ -54,7 +53,6 @@ def parse_recipients_file(filename: str, content: bytes) -> List[Dict[str, str]]
             .replace("\r", "\n")
         )
 
-        # Detect delimiter (comma, semicolon, or tab)
         sample = normalized_text[:2048]
         delimiter = ","
         if sample.count(";") > sample.count(",") and sample.count(";") > sample.count("\t"):
@@ -93,7 +91,6 @@ def parse_recipients_file(filename: str, content: bytes) -> List[Dict[str, str]]
                 if any(row_dict.values()):
                     records.append(row_dict)
 
-    # Locate email field across common header aliases
     valid_records = []
     for rec in records:
         email_key = None
@@ -102,7 +99,6 @@ def parse_recipients_file(filename: str, content: bytes) -> List[Dict[str, str]]
                 email_key = k
                 break
 
-        # Fallback: inspect field values for an '@' address
         if not email_key:
             for k, val in rec.items():
                 if "@" in val and "." in val:
@@ -117,7 +113,7 @@ def parse_recipients_file(filename: str, content: bytes) -> List[Dict[str, str]]
 
 
 def substitute_placeholders(template: str, context: Dict[str, str]) -> str:
-    """Replaces placeholders like {name} or {Company} case-insensitively."""
+    """Replaces placeholders like {name} or {company} case-insensitively."""
     lookup = {k.lower().strip(): v for k, v in context.items() if not k.startswith("__")}
 
     def replacer(match: re.Match) -> str:
@@ -134,9 +130,10 @@ def send_brevo_request(
     cc_list: Optional[List[str]] = None,
     bcc_list: Optional[List[str]] = None,
     attachment_name: Optional[str] = None,
-    attachment_data: Optional[bytes] = None
+    attachment_data: Optional[bytes] = None,
+    scheduled_at: Optional[str] = None
 ) -> Tuple[bool, str]:
-    """Transmits an email payload to Brevo's v3 REST endpoint."""
+    """Transmits an email payload to Brevo's v3 REST endpoint with optional scheduled delivery."""
     if not BREVO_API_KEY:
         return False, "BREVO_API_KEY is not configured in environment variables."
 
@@ -147,6 +144,10 @@ def send_brevo_request(
         "htmlContent": build_html_wrapper(subject, body),
         "textContent": body
     }
+
+    # Attach optional future timestamp (ISO 8601 UTC)
+    if scheduled_at and scheduled_at.strip():
+        payload["scheduledAt"] = scheduled_at.strip()
 
     if cc_list:
         payload["cc"] = [{"email": e} for e in cc_list]
@@ -184,13 +185,15 @@ def send_bulk_personalized(
     cc_list: Optional[List[str]] = None,
     bcc_list: Optional[List[str]] = None,
     attachment_name: Optional[str] = None,
-    attachment_data: Optional[bytes] = None
+    attachment_data: Optional[bytes] = None,
+    scheduled_at: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Sends personalized copies to each recipient parsed from a spreadsheet."""
+    """Sends personalized copies to each recipient parsed from a spreadsheet with optional scheduling."""
     sent_count = 0
     failures = []
 
-    print(f"[BULK START] Processing {len(records)} personalized records...")
+    action_label = f"Scheduling (for {scheduled_at})" if scheduled_at else "Processing"
+    print(f"[BULK START] {action_label} {len(records)} personalized records...")
 
     for row in records:
         target_email = row["__email__"]
@@ -204,12 +207,13 @@ def send_bulk_personalized(
             cc_list=cc_list,
             bcc_list=bcc_list,
             attachment_name=attachment_name,
-            attachment_data=attachment_data
+            attachment_data=attachment_data,
+            scheduled_at=scheduled_at
         )
 
         if ok:
             sent_count += 1
-            print(f"[BULK SUCCESS] Sent to {target_email}")
+            print(f"[BULK SUCCESS] Dispatched/Queued for {target_email}")
         else:
             failures.append({"email": target_email, "error": msg})
             print(f"[BULK FAIL] Failed for {target_email}: {msg}")
@@ -218,5 +222,6 @@ def send_bulk_personalized(
         "total": len(records),
         "successful": sent_count,
         "failed": len(failures),
-        "failure_details": failures
+        "failure_details": failures,
+        "scheduled_at": scheduled_at
     }

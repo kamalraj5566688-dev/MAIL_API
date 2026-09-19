@@ -1,8 +1,9 @@
 import sys
+import traceback
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response, Request
+from fastapi.responses import FileResponse, JSONResponse
 from email_service import (
     send_brevo_request,
     parse_recipients_file,
@@ -15,6 +16,20 @@ app = FastAPI(title="Mail Dispatch Studio")
 
 BASE_DIR = Path(__file__).resolve().parent
 HTML_FILE = BASE_DIR / "index.html"
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Intercepts unhandled crashes and surfaces clear diagnostic messages."""
+    error_trace = traceback.format_exc()
+    print(f"[UNHANDLED EXCEPTION]\n{error_trace}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"{type(exc).__name__}: {str(exc)}",
+            "traceback": error_trace
+        }
+    )
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -42,29 +57,39 @@ async def send_mail_endpoint(
     bcc: Optional[str] = Form(None),
     subject: str = Form(...),
     message: str = Form(...),
+    scheduled_at: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
     recipients_file: Optional[UploadFile] = File(None)
 ):
+    # Normalize empty strings
+    clean_schedule = scheduled_at.strip() if scheduled_at and scheduled_at.strip() else None
+
     # Parse CC and BCC
     cc_list = [e.strip() for e in cc.split(",") if e.strip()] if cc else None
     bcc_list = [e.strip() for e in bcc.split(",") if e.strip()] if bcc else None
 
-    # Read attachment if provided
+    # Read attachment if present
     att_name = None
     att_data = None
     if file and file.filename:
         att_name = file.filename
         att_data = await file.read()
 
-    # MODE A: Bulk Personalization via Spreadsheet (.csv or .xlsx)
+    # MODE A: Bulk Personalization via Spreadsheet
     if recipients_file and recipients_file.filename:
-        file_bytes = await recipients_file.read()
-        records = parse_recipients_file(recipients_file.filename, file_bytes)
+        try:
+            file_bytes = await recipients_file.read()
+            records = parse_recipients_file(recipients_file.filename, file_bytes)
+        except Exception as err:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unable to parse spreadsheet '{recipients_file.filename}': {str(err)}"
+            )
 
         if not records:
             raise HTTPException(
                 status_code=400,
-                detail="No valid recipient emails were detected in the uploaded file."
+                detail="No recipient emails found. Ensure the file has an 'email' or 'to' header."
             )
 
         result = send_bulk_personalized(
@@ -74,12 +99,14 @@ async def send_mail_endpoint(
             cc_list=cc_list,
             bcc_list=bcc_list,
             attachment_name=att_name,
-            attachment_data=att_data
+            attachment_data=att_data,
+            scheduled_at=clean_schedule
         )
 
+        status_prefix = f"Scheduled for {clean_schedule}" if clean_schedule else "Delivered"
         return {
             "mode": "bulk_personalization",
-            "message": f"Successfully delivered {result['successful']} of {result['total']} personalized emails!",
+            "message": f"{status_prefix}: {result['successful']} of {result['total']} personalized emails processed.",
             "details": result
         }
 
@@ -87,7 +114,7 @@ async def send_mail_endpoint(
     elif to and to.strip():
         to_list = [e.strip() for e in to.split(",") if e.strip()]
         if not to_list:
-            raise HTTPException(status_code=400, detail="Please enter at least one recipient email.")
+            raise HTTPException(status_code=400, detail="Please enter at least one valid recipient email.")
 
         ok, msg = send_brevo_request(
             to_list=to_list,
@@ -96,22 +123,23 @@ async def send_mail_endpoint(
             cc_list=cc_list,
             bcc_list=bcc_list,
             attachment_name=att_name,
-            attachment_data=att_data
+            attachment_data=att_data,
+            scheduled_at=clean_schedule
         )
 
         if not ok:
-            raise HTTPException(status_code=500, detail=msg)
+            raise HTTPException(status_code=400, detail=f"Brevo rejection: {msg}")
 
+        success_msg = f"Email scheduled for delivery at {clean_schedule}!" if clean_schedule else f"Email delivered successfully to {len(to_list)} recipient(s)!"
         return {
             "mode": "standard_dispatch",
-            "message": f"Email delivered successfully to {len(to_list)} recipient(s)!",
+            "message": success_msg,
             "to": to_list,
-            "cc": cc_list,
-            "bcc": bcc_list
+            "scheduled_at": clean_schedule
         }
 
     else:
         raise HTTPException(
             status_code=400,
-            detail="Please provide recipient emails in 'To' or upload a CSV/XLSX spreadsheet."
+            detail="Please provide recipient emails or upload a spreadsheet."
         )

@@ -2,8 +2,8 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mail Dispatch Studio</title>
     <style>
         :root {
@@ -119,6 +119,7 @@
         }
 
         input[type="text"],
+        input[type="datetime-local"],
         textarea,
         input[type="file"] {
             width: 100%;
@@ -133,6 +134,7 @@
         }
 
         input[type="text"]:focus,
+        input[type="datetime-local"]:focus,
         textarea:focus {
             border-color: var(--accent-blue);
             box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
@@ -178,6 +180,14 @@
 
         .file-dropzone input {
             display: none;
+        }
+
+        .schedule-box {
+            background: #f0f6ff;
+            border: 1px solid #cce3ff;
+            border-radius: var(--radius-sm);
+            padding: 12px 14px;
+            margin-top: 6px;
         }
 
         .btn-submit {
@@ -262,7 +272,8 @@
 
         <!-- Mode Switcher Tabs -->
         <div class="tab-container">
-            <button type="button" class="tab-button active" id="tabDirect" onclick="setMode('direct')">Direct Mail</button>
+            <button type="button" class="tab-button active" id="tabDirect" onclick="setMode('direct')">Direct
+                Mail</button>
             <button type="button" class="tab-button" id="tabBulk" onclick="setMode('bulk')">Bulk Spreadsheet</button>
         </div>
 
@@ -274,7 +285,7 @@
                     <span>To</span>
                     <span class="toggle-link" onclick="toggleCcBcc()">+ CC / BCC</span>
                 </label>
-                <input type="text" id="toInput" placeholder="sarah@example.com, alex@example.com">
+                <input type="text" id="toInput" placeholder="sarah@example.com, alex@example.com" />
                 <p class="hint">Comma-separated for multiple direct recipients.</p>
             </div>
 
@@ -282,43 +293,61 @@
             <div id="ccBccGroup" class="hidden">
                 <div class="form-group">
                     <label>CC (Carbon Copy)</label>
-                    <input type="text" id="ccInput" placeholder="manager@example.com">
+                    <input type="text" id="ccInput" placeholder="manager@example.com" />
                 </div>
                 <div class="form-group">
                     <label>BCC (Blind Carbon Copy)</label>
-                    <input type="text" id="bccInput" placeholder="archive@example.com">
+                    <input type="text" id="bccInput" placeholder="archive@example.com" />
                 </div>
             </div>
 
             <!-- MODE 2: Bulk Spreadsheet Upload -->
             <div id="bulkSpreadsheetGroup" class="form-group hidden">
                 <label>Upload Contacts (.csv or .xlsx)</label>
-                <div class="file-dropzone" id="bulkDropzone" onclick="document.getElementById('recipientsFile').click()">
+                <div class="file-dropzone" id="bulkDropzone"
+                    onclick="document.getElementById('recipientsFile').click()">
                     <span id="bulkFileLabel">📁 Click or drag .csv or .xlsx file here</span>
-                    <input type="file" id="recipientsFile" accept=".csv, .xlsx, .xls" onchange="handleBulkFileSelected(this)">
+                    <input type="file" id="recipientsFile" accept=".csv, .xlsx, .xls"
+                        onchange="handleBulkFileSelected(this)" />
                 </div>
                 <p class="hint">
-                    Personalize dynamically using header tags like <span class="tag-chip">{name}</span> or <span class="tag-chip">{company}</span>.
+                    Personalize dynamically using header tags like <span class="tag-chip">{name}</span> or <span
+                        class="tag-chip">{company}</span>.
                 </p>
             </div>
 
             <!-- Subject Line -->
             <div class="form-group">
                 <label>Subject</label>
-                <input type="text" id="subjectInput" required placeholder="Important update for {name}">
+                <input type="text" id="subjectInput" required placeholder="Important update for {name}" />
             </div>
 
             <!-- Message Body -->
             <div class="form-group">
                 <label>Message</label>
-                <textarea id="messageInput" required placeholder="Hi {name},&#10;&#10;Here is your update regarding {company}..."></textarea>
+                <textarea id="messageInput" required
+                    placeholder="Hi {name},&#10;&#10;Here is your update regarding {company}..."></textarea>
             </div>
 
             <!-- General Attachment -->
             <div class="form-group">
                 <label>Attachment (Optional)</label>
-                <input type="file" id="generalAttachment">
+                <input type="file" id="generalAttachment" />
                 <p class="hint">Attach a PDF, image, or document (max 10 MB).</p>
+            </div>
+
+            <!-- Schedule Dispatch Section -->
+            <div class="form-group">
+                <label>
+                    <span>Delivery Timing</span>
+                    <span class="toggle-link" id="scheduleToggleBtn" onclick="toggleSchedule()">+ Schedule Send</span>
+                </label>
+                <div id="scheduleContainer" class="schedule-box hidden">
+                    <input type="datetime-local" id="scheduleInput" onchange="updateButtonLabel()" />
+                    <p class="hint">
+                        Pick a date and time up to 72 hours in the future. Clear field to send immediately.
+                    </p>
+                </div>
             </div>
 
             <button type="submit" class="btn-submit" id="submitBtn">Dispatch Message</button>
@@ -329,6 +358,7 @@
 
     <script>
         let activeMode = "direct";
+        let isScheduleActive = false;
 
         function setMode(mode) {
             activeMode = mode;
@@ -348,6 +378,37 @@
             ccBcc.classList.toggle("hidden");
         }
 
+        function toggleSchedule() {
+            isScheduleActive = !isScheduleActive;
+            const container = document.getElementById("scheduleContainer");
+            const toggleBtn = document.getElementById("scheduleToggleBtn");
+            const scheduleInput = document.getElementById("scheduleInput");
+
+            container.classList.toggle("hidden", !isScheduleActive);
+            toggleBtn.innerText = isScheduleActive ? "− Send Immediately" : "+ Schedule Send";
+
+            if (isScheduleActive) {
+                // Set minimum datetime to current local time + 5 mins
+                const now = new Date(Date.now() + 5 * 60000);
+                const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                scheduleInput.min = localIso;
+                scheduleInput.value = localIso;
+            } else {
+                scheduleInput.value = "";
+            }
+            updateButtonLabel();
+        }
+
+        function updateButtonLabel() {
+            const submitBtn = document.getElementById("submitBtn");
+            const scheduleInput = document.getElementById("scheduleInput");
+            if (isScheduleActive && scheduleInput.value) {
+                submitBtn.innerText = "Schedule Dispatch";
+            } else {
+                submitBtn.innerText = "Dispatch Message";
+            }
+        }
+
         function handleBulkFileSelected(input) {
             const label = document.getElementById("bulkFileLabel");
             if (input.files && input.files[0]) {
@@ -357,7 +418,7 @@
             }
         }
 
-        // Drag and Drop support
+        // Drag & Drop
         const dropzone = document.getElementById("bulkDropzone");
         ['dragenter', 'dragover'].forEach(name => {
             dropzone.addEventListener(name, (e) => {
@@ -399,7 +460,7 @@
             const statusBox = document.getElementById("statusBox");
 
             submitBtn.disabled = true;
-            submitBtn.innerText = "Dispatching...";
+            submitBtn.innerText = isScheduleActive ? "Scheduling..." : "Dispatching...";
             statusBox.style.display = "none";
             statusBox.className = "";
             statusBox.innerHTML = "";
@@ -413,6 +474,23 @@
             if (cc.trim()) formData.append("cc", cc.trim());
             if (bcc.trim()) formData.append("bcc", bcc.trim());
 
+            // Handle Scheduling timestamp
+            const scheduleInput = document.getElementById("scheduleInput");
+            if (isScheduleActive && scheduleInput.value) {
+                const chosenDate = new Date(scheduleInput.value);
+                const minTime = Date.now() + 2 * 60000; // at least 2 mins in future
+
+                if (chosenDate.getTime() < minTime) {
+                    alert("Scheduled time must be at least 2 minutes in the future.");
+                    submitBtn.disabled = false;
+                    updateButtonLabel();
+                    return;
+                }
+
+                // Send Brevo-compatible ISO 8601 UTC string (e.g. 2026-09-20T14:30:00.000Z)
+                formData.append("scheduled_at", chosenDate.toISOString());
+            }
+
             const fileInput = document.getElementById("generalAttachment");
             if (fileInput.files[0]) {
                 formData.append("file", fileInput.files[0]);
@@ -423,7 +501,7 @@
                 if (!to.trim()) {
                     alert("Please enter at least one recipient email address.");
                     submitBtn.disabled = false;
-                    submitBtn.innerText = "Dispatch Message";
+                    updateButtonLabel();
                     return;
                 }
                 formData.append("to", to.trim());
@@ -432,7 +510,7 @@
                 if (!bulkFile) {
                     alert("Please select or upload a .csv or .xlsx spreadsheet.");
                     submitBtn.disabled = false;
-                    submitBtn.innerText = "Dispatch Message";
+                    updateButtonLabel();
                     return;
                 }
                 formData.append("recipients_file", bulkFile);
@@ -444,7 +522,6 @@
                     body: formData
                 });
 
-                // Safe parsing: avoid JSON parse errors on plain-text server errors
                 let data = null;
                 let rawText = "";
                 const contentType = res.headers.get("content-type") || "";
@@ -459,40 +536,37 @@
                     rawText = await res.text();
                 }
 
-                // Handle HTTP errors (4xx, 5xx)
                 if (!res.ok) {
-                    const errorDetail = data?.detail || rawText || `Server returned error code ${res.status}`;
-                    showStatus("error", `<strong>Dispatch Rejected (HTTP ${res.status}):</strong><br>${escapeHtml(errorDetail)}`);
+                    const errorDetail = data?.detail || rawText || `Server returned HTTP ${res.status}`;
+                    showStatus("error", `<strong>Dispatch Rejected:</strong><br>${escapeHtml(errorDetail)}`);
                     return;
                 }
 
-                // Handle Successful HTTP response
                 if (data && data.mode === "bulk_personalization" && data.details) {
-                    const { total, successful, failed, failure_details } = data.details;
+                    const { total, successful, failed, failure_details, scheduled_at } = data.details;
 
                     if (failed > 0) {
-                        let failureHtml = `<strong>Bulk Dispatch Summary:</strong> Delivered ${successful} of ${total} personalized emails.<br>`;
+                        let failureHtml = `<strong>Summary:</strong> Processed ${successful} of ${total} personalized emails.<br>`;
                         failureHtml += `<div style="margin-top: 6px; font-weight: 600;">Rejection Reasons:</div>`;
                         failureHtml += `<ul class="failure-list">`;
-                        
                         failure_details.forEach(item => {
                             failureHtml += `<li><strong>${escapeHtml(item.email)}:</strong> ${escapeHtml(item.error)}</li>`;
                         });
-                        
                         failureHtml += `</ul>`;
                         showStatus(successful > 0 ? "warning" : "error", failureHtml);
                     } else {
-                        showStatus("success", `<strong>Success!</strong><br>All ${successful} personalized emails were dispatched successfully.`);
+                        const timingMsg = scheduled_at ? `queued to send at <strong>${new Date(scheduled_at).toLocaleString()}</strong>.` : "dispatched successfully.";
+                        showStatus("success", `<strong>Success!</strong><br>All ${successful} personalized emails have been ${timingMsg}`);
                     }
                 } else {
-                    showStatus("success", `<strong>Success!</strong><br>${escapeHtml(data?.message || "Message dispatched successfully.")}`);
+                    showStatus("success", `<strong>Success!</strong><br>${escapeHtml(data?.message || "Action completed successfully.")}`);
                 }
 
             } catch (err) {
                 showStatus("error", `<strong>Network/Client Error:</strong><br>${escapeHtml(err.message)}`);
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.innerText = "Dispatch Message";
+                updateButtonLabel();
             }
         }
     </script>
