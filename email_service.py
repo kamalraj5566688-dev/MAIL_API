@@ -15,17 +15,19 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL", "gamerkamal028@gmail.com")
 BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 
-def build_html_wrapper(subject: str, body: str) -> str:
-    """Wraps body text in an Apple-inspired email template."""
+def build_html_wrapper(subject: str, body_html: str) -> str:
+    """Wraps rich HTML body content in an Apple-inspired email frame."""
     return f"""<!DOCTYPE html>
 <html>
-    <body style="margin: 0; padding: 40px 20px; background-color: #f5f5f7; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; color: #1d1d1f;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 18px; border: 1px solid rgba(0, 0, 0, 0.08); padding: 40px; box-sizing: border-box;">
-            <div style="font-size: 12px; font-weight: 600; color: #7a7a7a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px;">Mail Dispatch</div>
-            <h1 style="font-size: 24px; font-weight: 600; line-height: 1.25; margin: 0 0 20px 0; color: #1d1d1f;">{subject}</h1>
-            <div style="font-size: 16px; line-height: 1.55; color: #1d1d1f; white-space: pre-wrap;">{body}</div>
-            <hr style="border: none; border-top: 1px solid #f0f0f0; margin: 32px 0 20px 0;">
-            <p style="font-size: 12px; color: #86868b; margin: 0;">
+    <body style="margin: 0; padding: 40px 20px; background-color: #f5f5f7; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1d1d1f;">
+        <div style="max-width: 620px; margin: 0 auto; background-color: #ffffff; border-radius: 18px; border: 1px solid rgba(0, 0, 0, 0.08); padding: 44px; box-sizing: border-box; box-shadow: 0 4px 20px rgba(0,0,0,0.03);">
+            <div style="font-size: 11px; font-weight: 700; color: #86868b; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 14px;">Mail Dispatch Studio</div>
+            <h1 style="font-size: 24px; font-weight: 600; line-height: 1.3; margin: 0 0 24px 0; color: #1d1d1f; letter-spacing: -0.3px;">{subject}</h1>
+            <div style="font-size: 15px; line-height: 1.65; color: #333336;">
+                {body_html}
+            </div>
+            <hr style="border: none; border-top: 1px solid #f0f0f2; margin: 36px 0 20px 0;">
+            <p style="font-size: 12px; color: #86868b; margin: 0; line-height: 1.4;">
                 Dispatched securely via Mail Dispatch Studio &bull; Designed with Apple Aesthetics
             </p>
         </div>
@@ -34,14 +36,10 @@ def build_html_wrapper(subject: str, body: str) -> str:
 
 
 def parse_recipients_file(filename: str, content: bytes) -> List[Dict[str, str]]:
-    """
-    Parses .csv or .xlsx spreadsheets into normalized row dictionaries.
-    Normalizes line breaks and detects delimiters automatically.
-    """
+    """Parses .csv or .xlsx spreadsheets into normalized row dictionaries."""
     records: List[Dict[str, str]] = []
     ext = filename.lower().split(".")[-1]
 
-    # Guard: Detect if an Excel (.xlsx) file was renamed or uploaded as .csv
     if content.startswith(b"PK\x03\x04"):
         ext = "xlsx"
 
@@ -133,19 +131,22 @@ def send_brevo_request(
     attachment_data: Optional[bytes] = None,
     scheduled_at: Optional[str] = None
 ) -> Tuple[bool, str]:
-    """Transmits an email payload to Brevo's v3 REST endpoint with optional scheduled delivery."""
+    """Transmits an email payload to Brevo with rich HTML and plain text fallback."""
     if not BREVO_API_KEY:
-        return False, "BREVO_API_KEY is not configured in environment variables."
+        return False, "BREVO_API_KEY is not configured."
+
+    # Strip HTML tags for clean plain-text fallback
+    plain_text_fallback = re.sub(r"<[^>]+>", " ", body)
+    plain_text_fallback = re.sub(r"\s+", " ", plain_text_fallback).strip()
 
     payload: Dict[str, Any] = {
         "sender": {"name": "Mail Dispatch Studio", "email": SENDER_EMAIL},
         "to": [{"email": e} for e in to_list],
         "subject": subject,
         "htmlContent": build_html_wrapper(subject, body),
-        "textContent": body
+        "textContent": plain_text_fallback
     }
 
-    # Attach optional future timestamp (ISO 8601 UTC)
     if scheduled_at and scheduled_at.strip():
         payload["scheduledAt"] = scheduled_at.strip()
 
@@ -188,12 +189,9 @@ def send_bulk_personalized(
     attachment_data: Optional[bytes] = None,
     scheduled_at: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Sends personalized copies to each recipient parsed from a spreadsheet with optional scheduling."""
+    """Sends personalized copies to each recipient parsed from a spreadsheet."""
     sent_count = 0
     failures = []
-
-    action_label = f"Scheduling (for {scheduled_at})" if scheduled_at else "Processing"
-    print(f"[BULK START] {action_label} {len(records)} personalized records...")
 
     for row in records:
         target_email = row["__email__"]
@@ -213,10 +211,8 @@ def send_bulk_personalized(
 
         if ok:
             sent_count += 1
-            print(f"[BULK SUCCESS] Dispatched/Queued for {target_email}")
         else:
             failures.append({"email": target_email, "error": msg})
-            print(f"[BULK FAIL] Failed for {target_email}: {msg}")
 
     return {
         "total": len(records),

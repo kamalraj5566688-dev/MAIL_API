@@ -5,10 +5,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mail Dispatch Studio</title>
+
+    <!-- Quill.js Rich Text Styles -->
+    <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
+    <!-- SheetJS for Instant Client-Side Spreadsheet Inspection -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+
     <style>
         :root {
             --bg-color: #f5f5f7;
-            --card-bg: rgba(255, 255, 255, 0.9);
+            --card-bg: rgba(255, 255, 255, 0.92);
             --card-border: rgba(0, 0, 0, 0.08);
             --text-main: #1d1d1f;
             --text-muted: #86868b;
@@ -38,14 +45,14 @@
 
         .studio-card {
             width: 100%;
-            max-width: 640px;
+            max-width: 720px;
             background: var(--card-bg);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             border-radius: var(--radius-md);
             border: 1px solid var(--card-border);
             box-shadow: 0 12px 40px rgba(0, 0, 0, 0.06);
-            padding: 36px 32px;
+            padding: 36px 34px;
         }
 
         .header-tag {
@@ -61,10 +68,9 @@
             font-size: 26px;
             font-weight: 600;
             letter-spacing: -0.5px;
-            margin-bottom: 24px;
+            margin-bottom: 22px;
         }
 
-        /* Tabs */
         .tab-container {
             display: flex;
             background: #e8e8ed;
@@ -93,7 +99,7 @@
         }
 
         .form-group {
-            margin-bottom: 16px;
+            margin-bottom: 18px;
         }
 
         label {
@@ -120,7 +126,7 @@
 
         input[type="text"],
         input[type="datetime-local"],
-        textarea,
+        select,
         input[type="file"] {
             width: 100%;
             padding: 11px 14px;
@@ -135,15 +141,9 @@
 
         input[type="text"]:focus,
         input[type="datetime-local"]:focus,
-        textarea:focus {
+        select:focus {
             border-color: var(--accent-blue);
             box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
-        }
-
-        textarea {
-            resize: vertical;
-            min-height: 120px;
-            line-height: 1.5;
         }
 
         .hint {
@@ -153,19 +153,42 @@
             line-height: 1.4;
         }
 
-        .tag-chip {
-            background: #eef2f8;
-            color: var(--accent-blue);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-            font-size: 11px;
+        /* Interactive Tag Chips */
+        .tag-palette {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            margin-top: 6px;
+            padding: 8px 12px;
+            background: #f7f7f9;
+            border-radius: var(--radius-sm);
+            border: 1px dashed var(--border-subtle);
         }
 
+        .tag-btn {
+            background: #eaf1fb;
+            color: var(--accent-blue);
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-family: ui-monospace, SFMono-Regular, monospace;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid rgba(0, 113, 227, 0.2);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .tag-btn:hover {
+            background: var(--accent-blue);
+            color: #fff;
+        }
+
+        /* File Dropzone */
         .file-dropzone {
             border: 2px dashed var(--border-subtle);
             border-radius: var(--radius-sm);
-            padding: 20px 16px;
+            padding: 18px 16px;
             text-align: center;
             background: #fafafc;
             cursor: pointer;
@@ -182,12 +205,58 @@
             display: none;
         }
 
-        .schedule-box {
-            background: #f0f6ff;
-            border: 1px solid #cce3ff;
+        /* Data Preview Table */
+        .preview-container {
+            margin-top: 12px;
             border-radius: var(--radius-sm);
-            padding: 12px 14px;
-            margin-top: 6px;
+            border: 1px solid var(--border-subtle);
+            overflow-x: auto;
+            background: #fff;
+            max-height: 170px;
+        }
+
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            text-align: left;
+        }
+
+        .preview-table th {
+            background: #f5f5f7;
+            padding: 8px 10px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-subtle);
+            color: #48484a;
+            white-space: nowrap;
+        }
+
+        .preview-table td {
+            padding: 7px 10px;
+            border-bottom: 1px solid #f0f0f2;
+            white-space: nowrap;
+            color: #1d1d1f;
+        }
+
+        /* Quill Editor Styling */
+        #quillEditor {
+            background: #ffffff;
+            border-bottom-left-radius: var(--radius-sm);
+            border-bottom-right-radius: var(--radius-sm);
+            font-size: 14px;
+            min-height: 180px;
+            font-family: inherit;
+        }
+
+        .ql-toolbar.ql-snow {
+            border-top-left-radius: var(--radius-sm);
+            border-top-right-radius: var(--radius-sm);
+            border-color: var(--border-subtle);
+            background: #fafafc;
+        }
+
+        .ql-container.ql-snow {
+            border-color: var(--border-subtle);
         }
 
         .btn-submit {
@@ -200,7 +269,7 @@
             border: none;
             border-radius: var(--radius-sm);
             cursor: pointer;
-            margin-top: 10px;
+            margin-top: 8px;
             transition: background 0.2s ease, transform 0.05s ease;
         }
 
@@ -216,6 +285,14 @@
             background: #b0b0b5;
             cursor: not-allowed;
             transform: none;
+        }
+
+        .schedule-box {
+            background: #f0f6ff;
+            border: 1px solid #cce3ff;
+            border-radius: var(--radius-sm);
+            padding: 12px 14px;
+            margin-top: 6px;
         }
 
         #statusBox {
@@ -250,12 +327,8 @@
             margin-top: 10px;
             padding-left: 18px;
             font-size: 12px;
-            max-height: 180px;
+            max-height: 160px;
             overflow-y: auto;
-        }
-
-        .failure-list li {
-            margin-bottom: 5px;
         }
 
         .hidden {
@@ -279,7 +352,18 @@
 
         <form id="mailForm" onsubmit="handleDispatch(event)">
 
-            <!-- MODE 1: Direct Recipients -->
+            <!-- Template Selector Dropdown -->
+            <div class="form-group">
+                <label>Apple-Style Template</label>
+                <select id="templateSelector" onchange="applyTemplate(this.value)">
+                    <option value="custom">Custom / Blank Draft</option>
+                    <option value="outreach">Cold Outreach &bull; Executive Inquiry</option>
+                    <option value="product">Product Launch &bull; Workspace Updates</option>
+                    <option value="invitation">Private Event &bull; VIP Invitation</option>
+                </select>
+            </div>
+
+            <!-- Direct Recipients -->
             <div id="directRecipientsGroup" class="form-group">
                 <label>
                     <span>To</span>
@@ -301,7 +385,7 @@
                 </div>
             </div>
 
-            <!-- MODE 2: Bulk Spreadsheet Upload -->
+            <!-- Bulk Spreadsheet Upload & Interactive Preview -->
             <div id="bulkSpreadsheetGroup" class="form-group hidden">
                 <label>Upload Contacts (.csv or .xlsx)</label>
                 <div class="file-dropzone" id="bulkDropzone"
@@ -310,10 +394,18 @@
                     <input type="file" id="recipientsFile" accept=".csv, .xlsx, .xls"
                         onchange="handleBulkFileSelected(this)" />
                 </div>
-                <p class="hint">
-                    Personalize dynamically using header tags like <span class="tag-chip">{name}</span> or <span
-                        class="tag-chip">{company}</span>.
-                </p>
+
+                <!-- Live Tag Insertion Palette -->
+                <div id="tagPaletteContainer" class="hidden">
+                    <div class="hint" style="margin-bottom: 4px; font-weight: 500;">Detected Columns (Click to insert
+                        into message):</div>
+                    <div class="tag-palette" id="tagPalette"></div>
+                </div>
+
+                <!-- First 3 Rows Preview Table -->
+                <div id="previewTableContainer" class="preview-container hidden">
+                    <table class="preview-table" id="previewTable"></table>
+                </div>
             </div>
 
             <!-- Subject Line -->
@@ -322,18 +414,18 @@
                 <input type="text" id="subjectInput" required placeholder="Important update for {name}" />
             </div>
 
-            <!-- Message Body -->
+            <!-- Quill Rich-Text Editor -->
             <div class="form-group">
-                <label>Message</label>
-                <textarea id="messageInput" required
-                    placeholder="Hi {name},&#10;&#10;Here is your update regarding {company}..."></textarea>
+                <label>Message Content</label>
+                <div id="quillEditor"></div>
+                <p class="hint">Format headings, bold phrases, bullet lists, or links cleanly.</p>
             </div>
 
             <!-- General Attachment -->
             <div class="form-group">
                 <label>Attachment (Optional)</label>
                 <input type="file" id="generalAttachment" />
-                <p class="hint">Attach a PDF, image, or document (max 10 MB).</p>
+                <p class="hint">Attach a PDF, image, or document (under 10 MB).</p>
             </div>
 
             <!-- Schedule Dispatch Section -->
@@ -344,9 +436,7 @@
                 </label>
                 <div id="scheduleContainer" class="schedule-box hidden">
                     <input type="datetime-local" id="scheduleInput" onchange="updateButtonLabel()" />
-                    <p class="hint">
-                        Pick a date and time up to 72 hours in the future. Clear field to send immediately.
-                    </p>
+                    <p class="hint">Queue up to 72 hours ahead via Brevo cloud timers.</p>
                 </div>
             </div>
 
@@ -357,6 +447,51 @@
     </div>
 
     <script>
+        // 1. Initialize Quill.js Visual Editor
+        const quill = new Quill('#quillEditor', {
+            theme: 'snow',
+            placeholder: 'Compose your personalized message here...',
+            modules: {
+                toolbar: [
+                    [{ 'header': [1, 2, false] }],
+                    ['bold', 'italic', 'underline'],
+                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                    ['blockquote', 'link'],
+                    ['clean']
+                ]
+            }
+        });
+
+        // 2. Pre-Built Apple-Style Templates
+        const templates = {
+            custom: {
+                subject: '',
+                body: '<p>Hi {name},</p><p><br></p><p>Best regards,<br>Mail Dispatch Studio</p>'
+            },
+            outreach: {
+                subject: 'Quick question regarding {company}',
+                body: '<p>Hi {name},</p><p>I noticed the impressive work your team is driving at <strong>{company}</strong> and wanted to reach out directly.</p><p>We recently rolled out an automated communication system designed to eliminate manual dispatch bottlenecks while maintaining high inbox deliverability.</p><p>Do you have 5 minutes this Thursday for a brief discussion?</p><p>Best regards,<br>Kamal</p>'
+            },
+            product: {
+                subject: 'Exciting updates to your workspace, {name}!',
+                body: '<p>Hello {name},</p><p>We are thrilled to unveil our latest dispatch capabilities crafted to streamline your communications:</p><ul><li><strong>Cloud Scheduling:</strong> Queue dispatches up to 72 hours in advance.</li><li><strong>Dynamic Field Personalization:</strong> Personalize every message with tags like {company}.</li><li><strong>Visual Rich Formatting:</strong> Designed with native Apple typography.</li></ul><p>Explore your updated console today to get started.</p><p>Cheers,<br>The Product Team</p>'
+            },
+            invitation: {
+                subject: 'Exclusive Invitation: Product Architecture Showcase',
+                body: '<p>Dear {name},</p><p>You are cordially invited to attend an exclusive virtual walkthrough on building scalable developer tooling.</p><p><strong>Event Highlights:</strong></p><ul><li><strong>Date:</strong> Saturday, October 10th</li><li><strong>Time:</strong> 6:00 PM IST</li><li><strong>Access:</strong> Virtual &bull; Exclusive Link</li></ul><p>Please confirm your spot by replying directly to this dispatch.</p><p>Warmly,<br>Dispatch Studio</p>'
+            }
+        };
+
+        function applyTemplate(key) {
+            const tpl = templates[key] || templates.custom;
+            if (tpl.subject) document.getElementById('subjectInput').value = tpl.subject;
+            quill.root.innerHTML = tpl.body;
+        }
+
+        // Apply custom template default
+        applyTemplate('custom');
+
+        // Mode Switching
         let activeMode = "direct";
         let isScheduleActive = false;
 
@@ -366,16 +501,10 @@
             document.getElementById("tabBulk").classList.toggle("active", mode === "bulk");
             document.getElementById("directRecipientsGroup").classList.toggle("hidden", mode === "bulk");
             document.getElementById("bulkSpreadsheetGroup").classList.toggle("hidden", mode === "direct");
-
-            const toInput = document.getElementById("toInput");
-            if (mode === "bulk") {
-                toInput.removeAttribute("required");
-            }
         }
 
         function toggleCcBcc() {
-            const ccBcc = document.getElementById("ccBccGroup");
-            ccBcc.classList.toggle("hidden");
+            document.getElementById("ccBccGroup").classList.toggle("hidden");
         }
 
         function toggleSchedule() {
@@ -388,7 +517,6 @@
             toggleBtn.innerText = isScheduleActive ? "− Send Immediately" : "+ Schedule Send";
 
             if (isScheduleActive) {
-                // Set minimum datetime to current local time + 5 mins
                 const now = new Date(Date.now() + 5 * 60000);
                 const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
                 scheduleInput.min = localIso;
@@ -402,37 +530,80 @@
         function updateButtonLabel() {
             const submitBtn = document.getElementById("submitBtn");
             const scheduleInput = document.getElementById("scheduleInput");
-            if (isScheduleActive && scheduleInput.value) {
-                submitBtn.innerText = "Schedule Dispatch";
-            } else {
-                submitBtn.innerText = "Dispatch Message";
-            }
+            submitBtn.innerText = (isScheduleActive && scheduleInput.value) ? "Schedule Dispatch" : "Dispatch Message";
         }
 
+        // 3. Interactive Spreadsheet Inspection with SheetJS
         function handleBulkFileSelected(input) {
-            const label = document.getElementById("bulkFileLabel");
-            if (input.files && input.files[0]) {
-                label.innerText = `📄 Selected: ${input.files[0].name}`;
-            } else {
-                label.innerText = "📁 Click or drag .csv or .xlsx file here";
-            }
+            const file = input.files[0];
+            if (!file) return;
+
+            document.getElementById("bulkFileLabel").innerText = `📄 ${file.name}`;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
+
+                    if (!rows || rows.length === 0) return;
+
+                    const headers = Object.keys(rows[0]);
+                    renderTagPalette(headers);
+                    renderPreviewTable(headers, rows.slice(0, 3));
+                } catch (err) {
+                    console.error("Spreadsheet preview parse error:", err);
+                }
+            };
+            reader.readAsArrayBuffer(file);
         }
 
-        // Drag & Drop
+        function renderTagPalette(headers) {
+            const container = document.getElementById("tagPaletteContainer");
+            const palette = document.getElementById("tagPalette");
+            palette.innerHTML = "";
+
+            headers.forEach(h => {
+                const tagText = `{${h.trim()}}`;
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "tag-btn";
+                btn.innerText = tagText;
+                btn.title = `Insert ${tagText} into message`;
+                btn.onclick = () => insertTagIntoQuill(tagText);
+                palette.appendChild(btn);
+            });
+
+            container.classList.remove("hidden");
+        }
+
+        function insertTagIntoQuill(tag) {
+            const range = quill.getSelection(true);
+            quill.insertText(range.index, tag + ' ');
+            quill.setSelection(range.index + tag.length + 1);
+        }
+
+        function renderPreviewTable(headers, topRows) {
+            const container = document.getElementById("previewTableContainer");
+            const table = document.getElementById("previewTable");
+
+            let html = "<thead><tr>" + headers.map(h => `<th>${escapeHtml(h)}</th>`).join("") + "</tr></thead><tbody>";
+            topRows.forEach(row => {
+                html += "<tr>" + headers.map(h => `<td>${escapeHtml(String(row[h] || ''))}</td>`).join("") + "</tr>";
+            });
+            html += "</tbody>";
+
+            table.innerHTML = html;
+            container.classList.remove("hidden");
+        }
+
+        // Drag & drop listeners
         const dropzone = document.getElementById("bulkDropzone");
-        ['dragenter', 'dragover'].forEach(name => {
-            dropzone.addEventListener(name, (e) => {
-                e.preventDefault();
-                dropzone.classList.add('dragover');
-            });
-        });
-        ['dragleave', 'drop'].forEach(name => {
-            dropzone.addEventListener(name, (e) => {
-                e.preventDefault();
-                dropzone.classList.remove('dragover');
-            });
-        });
-        dropzone.addEventListener('drop', (e) => {
+        ['dragenter', 'dragover'].forEach(n => dropzone.addEventListener(n, e => { e.preventDefault(); dropzone.classList.add('dragover'); }));
+        ['dragleave', 'drop'].forEach(n => dropzone.addEventListener(n, e => { e.preventDefault(); dropzone.classList.remove('dragover'); }));
+        dropzone.addEventListener('drop', e => {
             if (e.dataTransfer.files && e.dataTransfer.files[0]) {
                 const fileInput = document.getElementById("recipientsFile");
                 fileInput.files = e.dataTransfer.files;
@@ -454,6 +625,7 @@
             statusBox.style.display = "block";
         }
 
+        // 4. Submission Handler
         async function handleDispatch(e) {
             e.preventDefault();
             const submitBtn = document.getElementById("submitBtn");
@@ -467,34 +639,27 @@
 
             const formData = new FormData();
             formData.append("subject", document.getElementById("subjectInput").value);
-            formData.append("message", document.getElementById("messageInput").value);
+            formData.append("message", quill.root.innerHTML); // Export rich HTML from Quill
 
             const cc = document.getElementById("ccInput").value;
             const bcc = document.getElementById("bccInput").value;
             if (cc.trim()) formData.append("cc", cc.trim());
             if (bcc.trim()) formData.append("bcc", bcc.trim());
 
-            // Handle Scheduling timestamp
             const scheduleInput = document.getElementById("scheduleInput");
             if (isScheduleActive && scheduleInput.value) {
                 const chosenDate = new Date(scheduleInput.value);
-                const minTime = Date.now() + 2 * 60000; // at least 2 mins in future
-
-                if (chosenDate.getTime() < minTime) {
+                if (chosenDate.getTime() < Date.now() + 2 * 60000) {
                     alert("Scheduled time must be at least 2 minutes in the future.");
                     submitBtn.disabled = false;
                     updateButtonLabel();
                     return;
                 }
-
-                // Send Brevo-compatible ISO 8601 UTC string (e.g. 2026-09-20T14:30:00.000Z)
                 formData.append("scheduled_at", chosenDate.toISOString());
             }
 
             const fileInput = document.getElementById("generalAttachment");
-            if (fileInput.files[0]) {
-                formData.append("file", fileInput.files[0]);
-            }
+            if (fileInput.files[0]) formData.append("file", fileInput.files[0]);
 
             if (activeMode === "direct") {
                 const to = document.getElementById("toInput").value;
@@ -517,38 +682,19 @@
             }
 
             try {
-                const res = await fetch("/send-mail", {
-                    method: "POST",
-                    body: formData
-                });
-
-                let data = null;
-                let rawText = "";
+                const res = await fetch("/send-mail", { method: "POST", body: formData });
                 const contentType = res.headers.get("content-type") || "";
-
-                if (contentType.includes("application/json")) {
-                    try {
-                        data = await res.json();
-                    } catch (err) {
-                        rawText = await res.text();
-                    }
-                } else {
-                    rawText = await res.text();
-                }
+                const data = contentType.includes("application/json") ? await res.json() : { detail: await res.text() };
 
                 if (!res.ok) {
-                    const errorDetail = data?.detail || rawText || `Server returned HTTP ${res.status}`;
-                    showStatus("error", `<strong>Dispatch Rejected:</strong><br>${escapeHtml(errorDetail)}`);
+                    showStatus("error", `<strong>Dispatch Rejected:</strong><br>${escapeHtml(data.detail || 'Server error')}`);
                     return;
                 }
 
                 if (data && data.mode === "bulk_personalization" && data.details) {
                     const { total, successful, failed, failure_details, scheduled_at } = data.details;
-
                     if (failed > 0) {
-                        let failureHtml = `<strong>Summary:</strong> Processed ${successful} of ${total} personalized emails.<br>`;
-                        failureHtml += `<div style="margin-top: 6px; font-weight: 600;">Rejection Reasons:</div>`;
-                        failureHtml += `<ul class="failure-list">`;
+                        let failureHtml = `<strong>Summary:</strong> Processed ${successful} of ${total} emails.<br><ul class="failure-list">`;
                         failure_details.forEach(item => {
                             failureHtml += `<li><strong>${escapeHtml(item.email)}:</strong> ${escapeHtml(item.error)}</li>`;
                         });
@@ -561,9 +707,8 @@
                 } else {
                     showStatus("success", `<strong>Success!</strong><br>${escapeHtml(data?.message || "Action completed successfully.")}`);
                 }
-
             } catch (err) {
-                showStatus("error", `<strong>Network/Client Error:</strong><br>${escapeHtml(err.message)}`);
+                showStatus("error", `<strong>Network Error:</strong><br>${escapeHtml(err.message)}`);
             } finally {
                 submitBtn.disabled = false;
                 updateButtonLabel();
