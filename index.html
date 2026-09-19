@@ -2,13 +2,13 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mail Dispatch Studio</title>
 
     <!-- Quill.js Rich Text Styles -->
     <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
-    <!-- SheetJS for Instant Client-Side Spreadsheet Inspection -->
+    <!-- SheetJS for Client-Side Spreadsheet Inspection -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
 
@@ -153,7 +153,11 @@
             line-height: 1.4;
         }
 
-        /* Interactive Tag Chips */
+        .tag-palette-hint {
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
         .tag-palette {
             display: flex;
             flex-wrap: wrap;
@@ -184,7 +188,6 @@
             color: #fff;
         }
 
-        /* File Dropzone */
         .file-dropzone {
             border: 2px dashed var(--border-subtle);
             border-radius: var(--radius-sm);
@@ -201,11 +204,6 @@
             background: #f0f7ff;
         }
 
-        .file-dropzone input {
-            display: none;
-        }
-
-        /* Data Preview Table */
         .preview-container {
             margin-top: 12px;
             border-radius: var(--radius-sm);
@@ -238,7 +236,6 @@
             color: #1d1d1f;
         }
 
-        /* Quill Editor Styling */
         #quillEditor {
             background: #ffffff;
             border-bottom-left-radius: var(--radius-sm);
@@ -369,7 +366,7 @@
                     <span>To</span>
                     <span class="toggle-link" onclick="toggleCcBcc()">+ CC / BCC</span>
                 </label>
-                <input type="text" id="toInput" placeholder="sarah@example.com, alex@example.com" />
+                <input type="text" id="toInput" placeholder="sarah@example.com, alex@example.com">
                 <p class="hint">Comma-separated for multiple direct recipients.</p>
             </div>
 
@@ -377,28 +374,27 @@
             <div id="ccBccGroup" class="hidden">
                 <div class="form-group">
                     <label>CC (Carbon Copy)</label>
-                    <input type="text" id="ccInput" placeholder="manager@example.com" />
+                    <input type="text" id="ccInput" placeholder="manager@example.com">
                 </div>
                 <div class="form-group">
                     <label>BCC (Blind Carbon Copy)</label>
-                    <input type="text" id="bccInput" placeholder="archive@example.com" />
+                    <input type="text" id="bccInput" placeholder="archive@example.com">
                 </div>
             </div>
 
             <!-- Bulk Spreadsheet Upload & Interactive Preview -->
             <div id="bulkSpreadsheetGroup" class="form-group hidden">
                 <label>Upload Contacts (.csv or .xlsx)</label>
-                <div class="file-dropzone" id="bulkDropzone"
-                    onclick="document.getElementById('recipientsFile').click()">
+                <div class="file-dropzone" id="bulkDropzone" onclick="triggerFileInput()">
                     <span id="bulkFileLabel">📁 Click or drag .csv or .xlsx file here</span>
-                    <input type="file" id="recipientsFile" accept=".csv, .xlsx, .xls"
-                        onchange="handleBulkFileSelected(this)" />
                 </div>
+                <!-- File input placed outside to prevent recursive click bubbling -->
+                <input type="file" id="recipientsFile" accept=".csv, .xlsx, .xls" class="hidden"
+                    onchange="handleBulkFileSelected(this)">
 
                 <!-- Live Tag Insertion Palette -->
                 <div id="tagPaletteContainer" class="hidden">
-                    <div class="hint" style="margin-bottom: 4px; font-weight: 500;">Detected Columns (Click to insert
-                        into message):</div>
+                    <div class="hint tag-palette-hint">Detected Columns (Click to insertinto message):</div>
                     <div class="tag-palette" id="tagPalette"></div>
                 </div>
 
@@ -411,7 +407,7 @@
             <!-- Subject Line -->
             <div class="form-group">
                 <label>Subject</label>
-                <input type="text" id="subjectInput" required placeholder="Important update for {name}" />
+                <input type="text" id="subjectInput" required placeholder="Important update for {name}">
             </div>
 
             <!-- Quill Rich-Text Editor -->
@@ -424,8 +420,8 @@
             <!-- General Attachment -->
             <div class="form-group">
                 <label>Attachment (Optional)</label>
-                <input type="file" id="generalAttachment" />
-                <p class="hint">Attach a PDF, image, or document (under 10 MB).</p>
+                <input type="file" id="generalAttachment">
+                <p class="hint">Attach a PDF, image, or document (Strictly max 14 MB).</p>
             </div>
 
             <!-- Schedule Dispatch Section -->
@@ -435,7 +431,7 @@
                     <span class="toggle-link" id="scheduleToggleBtn" onclick="toggleSchedule()">+ Schedule Send</span>
                 </label>
                 <div id="scheduleContainer" class="schedule-box hidden">
-                    <input type="datetime-local" id="scheduleInput" onchange="updateButtonLabel()" />
+                    <input type="datetime-local" id="scheduleInput" onchange="updateButtonLabel()">
                     <p class="hint">Queue up to 72 hours ahead via Brevo cloud timers.</p>
                 </div>
             </div>
@@ -447,6 +443,9 @@
     </div>
 
     <script>
+        const MAX_RAW_ATTACHMENT_BYTES = 14 * 1024 * 1024;
+        const MAX_HTML_BODY_BYTES = 4 * 1024 * 1024;
+
         // 1. Initialize Quill.js Visual Editor
         const quill = new Quill('#quillEditor', {
             theme: 'snow',
@@ -459,6 +458,43 @@
                     ['blockquote', 'link'],
                     ['clean']
                 ]
+            }
+        });
+
+        // Guard: Prevent pasting base64 images directly into the text editor
+        quill.root.addEventListener('paste', (e) => {
+            const clipboardData = e.clipboardData || window.clipboardData;
+            if (clipboardData && clipboardData.items) {
+                for (let i = 0; i < clipboardData.items.length; i++) {
+                    if (clipboardData.items[i].type.indexOf('image') !== -1) {
+                        e.preventDefault();
+                        alert("To avoid Brevo's 20MB payload limit, please do not paste images directly into the editor. Attach them below instead.");
+                        return;
+                    }
+                }
+            }
+        });
+
+        // Guard: Prevent dragging and dropping images directly into Quill
+        quill.root.addEventListener('drop', (e) => {
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                for (let i = 0; i < e.dataTransfer.files.length; i++) {
+                    if (e.dataTransfer.files[i].type.startsWith('image/')) {
+                        e.preventDefault();
+                        alert("To avoid Brevo's 20MB payload limit, please do not drop images into the editor. Use the Attachment field below.");
+                        return;
+                    }
+                }
+            }
+        });
+
+        // Guard: Check attachment size immediately on file selection
+        document.getElementById("generalAttachment").addEventListener("change", function (e) {
+            const file = e.target.files[0];
+            if (file && file.size > MAX_RAW_ATTACHMENT_BYTES) {
+                const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+                alert(`File too large (${sizeMb} MB). Brevo limits total email payloads to 20 MB (~14 MB raw binary before Base64 encoding).`);
+                e.target.value = "";
             }
         });
 
@@ -484,11 +520,10 @@
 
         function applyTemplate(key) {
             const tpl = templates[key] || templates.custom;
-            if (tpl.subject) document.getElementById('subjectInput').value = tpl.subject;
-            quill.root.innerHTML = tpl.body;
+            document.getElementById('subjectInput').value = tpl.subject || '';
+            quill.root.innerHTML = tpl.body || '<p><br></p>';
         }
 
-        // Apply custom template default
         applyTemplate('custom');
 
         // Mode Switching
@@ -533,6 +568,10 @@
             submitBtn.innerText = (isScheduleActive && scheduleInput.value) ? "Schedule Dispatch" : "Dispatch Message";
         }
 
+        function triggerFileInput() {
+            document.getElementById('recipientsFile').click();
+        }
+
         // 3. Interactive Spreadsheet Inspection with SheetJS
         function handleBulkFileSelected(input) {
             const file = input.files[0];
@@ -545,12 +584,15 @@
                 try {
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
+                    if (!workbook.SheetNames || workbook.SheetNames.length === 0) return;
+
                     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                     const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
 
                     if (!rows || rows.length === 0) return;
 
-                    const headers = Object.keys(rows[0]);
+                    // Filter out internal/empty keys created by SheetJS
+                    const headers = Object.keys(rows[0]).filter(h => h && !h.startsWith('__'));
                     renderTagPalette(headers);
                     renderPreviewTable(headers, rows.slice(0, 3));
                 } catch (err) {
@@ -572,6 +614,8 @@
                 btn.className = "tag-btn";
                 btn.innerText = tagText;
                 btn.title = `Insert ${tagText} into message`;
+                // Prevent button click from stealing focus from Quill
+                btn.onmousedown = (e) => e.preventDefault();
                 btn.onclick = () => insertTagIntoQuill(tagText);
                 palette.appendChild(btn);
             });
@@ -581,8 +625,9 @@
 
         function insertTagIntoQuill(tag) {
             const range = quill.getSelection(true);
-            quill.insertText(range.index, tag + ' ');
-            quill.setSelection(range.index + tag.length + 1);
+            const index = (range && typeof range.index === 'number') ? range.index : quill.getLength() - 1;
+            quill.insertText(index, tag + ' ');
+            quill.setSelection(index + tag.length + 1);
         }
 
         function renderPreviewTable(headers, topRows) {
@@ -599,7 +644,7 @@
             container.classList.remove("hidden");
         }
 
-        // Drag & drop listeners
+        // Drag & drop handlers
         const dropzone = document.getElementById("bulkDropzone");
         ['dragenter', 'dragover'].forEach(n => dropzone.addEventListener(n, e => { e.preventDefault(); dropzone.classList.add('dragover'); }));
         ['dragleave', 'drop'].forEach(n => dropzone.addEventListener(n, e => { e.preventDefault(); dropzone.classList.remove('dragover'); }));
@@ -618,6 +663,18 @@
             return div.innerHTML;
         }
 
+        function formatErrorDetail(detail) {
+            if (!detail) return 'Unknown server error.';
+            if (typeof detail === 'string') return escapeHtml(detail);
+            if (Array.isArray(detail)) {
+                return detail.map(item => item.msg ? escapeHtml(`${item.loc ? item.loc.join(' -> ') + ': ' : ''}${item.msg}`) : escapeHtml(JSON.stringify(item))).join('<br>');
+            }
+            if (typeof detail === 'object') {
+                return escapeHtml(detail.message || JSON.stringify(detail));
+            }
+            return escapeHtml(String(detail));
+        }
+
         function showStatus(type, htmlContent) {
             const statusBox = document.getElementById("statusBox");
             statusBox.className = type;
@@ -625,11 +682,17 @@
             statusBox.style.display = "block";
         }
 
-        // 4. Submission Handler
+        // 4. Form Submission & Payload Guards
         async function handleDispatch(e) {
             e.preventDefault();
             const submitBtn = document.getElementById("submitBtn");
             const statusBox = document.getElementById("statusBox");
+
+            // Validate that the Quill editor has actual text
+            if (!quill.getText().trim()) {
+                alert("Please enter a message body before dispatching.");
+                return;
+            }
 
             submitBtn.disabled = true;
             submitBtn.innerText = isScheduleActive ? "Scheduling..." : "Dispatching...";
@@ -637,9 +700,29 @@
             statusBox.className = "";
             statusBox.innerHTML = "";
 
+            // Guard: Validate Attachment Size
+            const fileInput = document.getElementById("generalAttachment");
+            if (fileInput.files[0] && fileInput.files[0].size > MAX_RAW_ATTACHMENT_BYTES) {
+                const sizeMb = (fileInput.files[0].size / (1024 * 1024)).toFixed(1);
+                alert(`Attachment too large (${sizeMb} MB). Maximum allowed size is 14 MB.`);
+                submitBtn.disabled = false;
+                updateButtonLabel();
+                return;
+            }
+
+            // Guard: Validate HTML Message Body Size
+            const htmlContent = quill.root.innerHTML;
+            const htmlSizeBytes = new Blob([htmlContent]).size;
+            if (htmlSizeBytes > MAX_HTML_BODY_BYTES) {
+                alert("Message content is too large. Please remove large elements or images and use the attachment field instead.");
+                submitBtn.disabled = false;
+                updateButtonLabel();
+                return;
+            }
+
             const formData = new FormData();
             formData.append("subject", document.getElementById("subjectInput").value);
-            formData.append("message", quill.root.innerHTML); // Export rich HTML from Quill
+            formData.append("message", htmlContent);
 
             const cc = document.getElementById("ccInput").value;
             const bcc = document.getElementById("bccInput").value;
@@ -658,8 +741,9 @@
                 formData.append("scheduled_at", chosenDate.toISOString());
             }
 
-            const fileInput = document.getElementById("generalAttachment");
-            if (fileInput.files[0]) formData.append("file", fileInput.files[0]);
+            if (fileInput.files[0]) {
+                formData.append("file", fileInput.files[0]);
+            }
 
             if (activeMode === "direct") {
                 const to = document.getElementById("toInput").value;
@@ -687,7 +771,7 @@
                 const data = contentType.includes("application/json") ? await res.json() : { detail: await res.text() };
 
                 if (!res.ok) {
-                    showStatus("error", `<strong>Dispatch Rejected:</strong><br>${escapeHtml(data.detail || 'Server error')}`);
+                    showStatus("error", `<strong>Dispatch Rejected:</strong><br>${formatErrorDetail(data.detail)}`);
                     return;
                 }
 
